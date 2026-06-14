@@ -1,3 +1,4 @@
+from app.services.ranker import upsert_resume
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.services.parser import parse_resume
@@ -59,6 +60,11 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         db.add(resume)
         db.commit()
         db.refresh(resume)
+
+        try:
+            upsert_resume(resume)
+        except Exception as e:
+            print(f"ChromaDB indexing warning: {e}")
 
         return {
             "message": "Resume uploaded, parsed and saved!",
