@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+celery
+redis
+sqlalchemy
+psycopg2-binary
+chromadb
+langchain
+langchain-google-genai
+google-generativeai
+boto3
+python-multipart
+pypdf2
+python-docx
+python-dotenv
