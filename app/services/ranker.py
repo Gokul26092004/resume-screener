@@ -4,6 +4,57 @@ import json
 from typing import Optional
 import chromadb
 from dotenv import load_dotenv
+from groq import Groq
+
+
+def extract_skills_from_jd(job_description: str) -> list[str]:
+    """Use Groq to extract required skills from a job description."""
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+    prompt = f"""Extract ONLY the technical and professional skills required from this job description.
+Return as a Python list with NO explanation. Example: ["Python", "FastAPI", "PostgreSQL", "Docker"]
+
+Job Description:
+{job_description}
+
+Return ONLY the list, nothing else:"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        text = response.choices[0].message.content.strip()
+        print(f"Groq response: {text}")
+
+        import ast
+        skills = ast.literal_eval(text)
+        print(f"Parsed skills: {skills}")
+        return skills if isinstance(skills, list) else []
+    except Exception as e:
+        print(f"Skill extraction error: {e}")
+        return []
+
+
+def calculate_skill_match(resume_text: str, required_skills: list[str]) -> tuple[list[str], list[str], float]:
+    """
+    Calculate skill match between resume and required skills.
+    Returns: (matched_skills, missing_skills, match_score 0-1)
+    """
+    resume_lower = resume_text.lower()
+    matched = []
+    missing = []
+
+    for skill in required_skills:
+        if skill.lower() in resume_lower:
+            matched.append(skill)
+        else:
+            missing.append(skill)
+
+    # Score: (matched / required) * 100
+    score = len(matched) / len(required_skills) if required_skills else 0.0
+    return matched, missing, round(score, 4)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -73,21 +124,27 @@ def rank_resumes(job_description: str, top_k: int = 10, min_score: float = 0.0) 
     total = collection.count()
 
     if total == 0:
+        print("ChromaDB is empty")
         return []
 
+    print(f"ChromaDB has {total} resumes. Querying...")
     query_embedding = embed_text(job_description)
+    print(f"Query embedding generated: {len(query_embedding)} dimensions")
+
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=min(top_k, total),
         include=["metadatas", "distances", "documents"],
     )
 
+    print(f"Query results: {results}")  # DEBUG
+
     ranked = []
     for rid, dist, meta, doc in zip(
-        results["ids"][0],
-        results["distances"][0],
-        results["metadatas"][0],
-        results["documents"][0],
+            results["ids"][0],
+            results["distances"][0],
+            results["metadatas"][0],
+            results["documents"][0],
     ):
         score = round(1.0 - dist, 4)
         if score < min_score:
@@ -102,6 +159,7 @@ def rank_resumes(job_description: str, top_k: int = 10, min_score: float = 0.0) 
         })
 
     ranked.sort(key=lambda x: x["score"], reverse=True)
+    print(f"Ranked {len(ranked)} resumes")
     return ranked
 
 
